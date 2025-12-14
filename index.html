@@ -369,10 +369,10 @@
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.561.0"
+    "react": "https://cdn.jsdelivr.net/npm/react@19.2.0/+esm",
+    "react-dom/": "https://cdn.jsdelivr.net/npm/react-dom@19.2.0/+esm",
+    "react/": "https://cdn.jsdelivr.net/npm/react@19.2.0/+esm",
+    "lucide-react": "https://cdn.jsdelivr.net/npm/lucide-react@0.561.0/+esm"
   }
 }
 </script>
@@ -400,7 +400,7 @@
                 • <span class="highlight">握拳</span> : 聚合冰雪水晶树<br/>
                 • <span class="highlight">张开手</span> : 冰雪散开<br/>
                 • <span class="highlight">向右划动</span> : 旋转冰晶<br/>
-                • <span class="highlight">捏合手指(食指拇指开合类似👌🏻的形状)</span> : 抓取照片
+                • <span class="highlight">捏合手指(食指拇指开/合 类似👌🏻的形状)</span> : 抓取照片
             </div>
             <button id="upload-btn" onclick="document.getElementById('file-input').click()">上传照片</button>
             <input type="file" id="file-input" multiple accept="image/*">
@@ -1053,14 +1053,43 @@
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
                 // 移动端使用CPU，桌面端使用GPU
                 const delegate = isMobile ? "CPU" : "GPU";
-                const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                        delegate: delegate
-                    },
-                    runningMode: "VIDEO", 
-                    numHands: 1
-                });
+                
+                // 模型文件URL列表（按优先级排序，如果第一个失败会自动尝试下一个）
+                // 方案1: 如果模型文件已上传到GitHub仓库，使用相对路径（推荐，无需翻墙）
+                // 方案2: 使用jsDelivr的npm镜像（国内通常可访问）
+                // 方案3: 原始Google Storage（需要翻墙，作为最后备用）
+                const modelUrls = [
+                    './models/hand_landmarker.task',  // 优先使用本地模型文件（需下载到GitHub仓库）
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/hand_landmarker.task',  // jsDelivr镜像
+                    'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'  // 原始地址（备用）
+                ];
+                
+                let handLandmarker = null;
+                let lastError = null;
+                
+                // 尝试加载模型文件（按优先级顺序）
+                for (const modelUrl of modelUrls) {
+                    try {
+                        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                            baseOptions: {
+                                modelAssetPath: modelUrl,
+                                delegate: delegate
+                            },
+                            runningMode: "VIDEO", 
+                            numHands: 1
+                        });
+                        console.log('模型加载成功，使用URL:', modelUrl);
+                        break; // 成功则跳出循环
+                    } catch (err) {
+                        console.warn('模型加载失败，尝试下一个URL:', modelUrl, err);
+                        lastError = err;
+                        continue; // 继续尝试下一个URL
+                    }
+                }
+                
+                if (!handLandmarker) {
+                    throw lastError || new Error('所有模型URL都无法加载');
+                }
                 const video = document.getElementById("input-video");
                 
                 // 移动端优化：降低视频分辨率以提高性能
